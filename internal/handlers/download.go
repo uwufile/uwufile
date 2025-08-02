@@ -3,10 +3,10 @@ package handlers
 import (
 	"net/http"
 
-	pubsub "github.com/libp2p/go-libp2p-pubsub"
+	iface "github.com/ipfs/kubo/core/coreiface"
 )
 
-func DownloadAPI(stateDir string, node *pubsub.PubSub) http.HandlerFunc {
+func DownloadAPI(stateDir string, api iface.CoreAPI) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
 	}
