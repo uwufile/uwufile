@@ -1,68 +1,55 @@
 package handlers
 
 import (
-	"crypto/sha256"
-	"fmt"
-	"io"
+	"context"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
 
-	"github.com/ipfs/go-cid"
-	mh "github.com/multiformats/go-multihash"
+	"github.com/ipfs/boxo/files"
+	iface "github.com/ipfs/kubo/core/coreiface"
 )
 
-func UploadCompleteAPI(stateDir string) http.HandlerFunc {
+func UploadCompleteAPI(ctx context.Context, stateDir string, api iface.CoreAPI) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		fileID := r.PathValue("fileID")
 		filePath := filepath.Join(stateDir, fileID)
 
-		c, err := calculateCIDv1(filePath)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("failed to calculate CID: %v", err), http.StatusInternalServerError)
+		_, err := os.Stat(filePath)
+		if os.IsNotExist(err) {
+			slog.Error("Could not find upload", "file ID", fileID, "error", err)
+			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+			return
+		} else if err != nil {
+			slog.Error("Failed checking if file exists", "file path", filePath, "error", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
 
-		cidStr := c.String()
-		newPath := filepath.Join(stateDir, cidStr)
+		file, err := os.Open(filePath)
+		if err != nil {
+			slog.Error("Failed reading file", "file path", filePath, "error", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		defer file.Close()
 
-		if err := os.Rename(filePath, newPath); err != nil {
-			http.Error(w, fmt.Sprintf("rename failed: %v", err), http.StatusInternalServerError)
+		ipfsFile := files.NewReaderFile(file)
+		cidFile, err := api.Unixfs().Add(ctx, ipfsFile)
+		if err != nil {
+			slog.Error("Failed adding file to IPFS instance", "file path", filePath, "error", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
 
-		w.Write(c.Bytes())
-	}
-}
-
-func calculateCIDv1(filePath string) (cid.Cid, error) {
-	f, err := os.Open(filePath)
-	if err != nil {
-		return cid.Cid{}, err
-	}
-	defer f.Close()
-
-	hasher := sha256.New()
-	buf := make([]byte, 256*1024)
-	for {
-		n, err := f.Read(buf)
-		if n > 0 {
-			hasher.Write(buf[:n])
-		}
-		if err == io.EOF {
-			break
-		}
+		err = api.Pin().Add(ctx, cidFile)
 		if err != nil {
-			return cid.Cid{}, err
+			slog.Error("Failed pinning file to IPFS instance", "file path", filePath, "cid", cidFile.RootCid(), "error", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
 		}
-	}
 
-	digest := hasher.Sum(nil)
-	multiHash, err := mh.Encode(digest, mh.SHA2_256)
-	if err != nil {
-		return cid.Cid{}, err
+		w.Write([]byte(cidFile.RootCid().String()))
 	}
-
-	c := cid.NewCidV1(cid.Raw, multiHash)
-	return c, nil
 }

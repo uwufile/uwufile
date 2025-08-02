@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log/slog"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 )
 
 func main() {
+	ctx := context.Background()
 	addr := flag.String("listen", "127.0.0.1:8080", "specify the LISTEN address")
 	flag.Parse()
 
@@ -29,7 +31,7 @@ func main() {
 
 	router.Handle("POST /", handlers.UploadAPI(stateDir, int64(maxUploadSize)))
 	router.Handle("PUT /{fileID}", handlers.UploadAPI(stateDir, int64(maxUploadSize)))
-	router.Handle("POST /{fileID}/complete", handlers.UploadCompleteAPI(stateDir))
+	router.Handle("POST /{fileID}/complete", handlers.UploadCompleteAPI(ctx, stateDir, api))
 	router.Handle("GET /{fileID}", handlers.DownloadAPI(stateDir, api))
 
 	s := &http.Server{
