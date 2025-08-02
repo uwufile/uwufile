@@ -32,7 +32,7 @@ func main() {
 	router.Handle("POST /", handlers.UploadAPI(stateDir, int64(maxUploadSize)))
 	router.Handle("PUT /{fileID}", handlers.UploadAPI(stateDir, int64(maxUploadSize)))
 	router.Handle("POST /{fileID}/complete", handlers.UploadCompleteAPI(ctx, stateDir, api))
-	router.Handle("GET /{fileID}", handlers.DownloadAPI(stateDir, api))
+	router.Handle("GET /{fileID}", handlers.DownloadAPI(ctx, stateDir, api))
 
 	s := &http.Server{
 		Addr:           *addr,
